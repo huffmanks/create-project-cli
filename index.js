@@ -7,7 +7,7 @@ import fs from "fs-extra";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const { Select, Form } = pkg;
+const { Confirm, Select, Input } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,57 +19,78 @@ const selectTemplatePrompt = new Select({
   choices: ["nextjs", "astrojs"],
 });
 
-const projectMetaPrompt = new Form({
-  name: "project",
-  message: "Please provide the following information:",
-  choices: [
-    {
-      name: "name",
-      message: "Enter the project name",
-      initial: "my-project",
-      validate: (value) => {
-        if (!value) {
-          return "Project name is required.";
-        }
-        return /^[a-zA-Z0-9-_]+$/.test(value) ? true : "Project name must not contain special characters or spaces.";
-      },
-    },
-    {
-      name: "title",
-      message: "Enter the site title",
-      initial: "My website",
-      validate: (value) => {
-        return value ? true : "Site title is required.";
-      },
-    },
-    {
-      name: "description",
-      message: "Enter the site description",
-      initial: "The coolest site ever.",
-      validate: (value) => {
-        return value ? true : "Site description is required.";
-      },
-    },
-  ],
+const projectNamePrompt = new Input({
+  name: "projectName",
+  message: "Enter the project name",
+  hint: "my-project",
+  required: true,
+  validate: (value) => {
+    if (!value.trim()) {
+      return "Project name is required.";
+    }
+    if (/\s/.test(value)) {
+      return "Project name must not contain spaces.";
+    }
+    if (!/^[a-zA-Z0-9-_]+$/.test(value)) {
+      return "Project name must not contain special characters.";
+    }
+    return true;
+  },
+});
+
+const siteTitlePrompt = new Input({
+  name: "title",
+  message: "Enter the site title",
+  hint: "My website",
+  required: true,
+  validate: (value) => {
+    if (!value.trim()) {
+      return "Site title is required.";
+    }
+    return true;
+  },
+});
+
+const siteDescriptionPrompt = new Input({
+  name: "description",
+  message: "Enter the site description",
+  hint: "The coolest site ever.",
+  required: true,
+  validate: (value) => {
+    if (!value.trim()) {
+      return "Site description is required.";
+    }
+    return true;
+  },
+});
+
+const installDepsPrompt = new Confirm({
+  name: "installDeps",
+  message: "Install dependencies?",
+  initial: true,
 });
 
 async function runPrompts() {
   try {
     const template = await selectTemplatePrompt.run();
-    const projectMeta = await projectMetaPrompt.run();
+    const projectName = await projectNamePrompt.run();
+    const siteTitle = await siteTitlePrompt.run();
+    const siteDescription = await siteDescriptionPrompt.run();
+    const installDeps = await installDepsPrompt.run();
 
     console.log("Template:", template);
-    console.log("Project name:", projectMeta.name);
-    console.log("Title:", projectMeta.title);
-    console.log("Description:", projectMeta.description);
+    console.log("Project name:", projectName);
+    console.log("Site title:", siteTitle);
+    console.log("Site description:", siteDescription);
+    console.log("Install dependencies?", installDeps);
 
-    createProject({ template, projectName: projectMeta.name, title: projectMeta.title, description: projectMeta.description });
+    createProject({ template, projectName, siteTitle, siteDescription, installDeps });
   } catch (error) {
     console.error(error);
   }
 }
 
-function createProject({ template, projectName, title, description }) {
+function createProject({ template, projectName, siteTitle, siteDescription, installDeps }) {
   const templateDir = path.join(__dirname, "templates", template);
   const projectDir = path.join(__dirname, projectName);
 
@@ -81,22 +102,37 @@ function createProject({ template, projectName, title, description }) {
   fs.copy(templateDir, projectDir, { filter: filterFunc })
     .then(() => {
       console.log(`Project ${projectName} created successfully!`);
-      updateProjectFiles(projectDir, title, description);
+      updateProjectFiles(projectDir, siteTitle, siteDescription);
+
+      if (installDeps) {
+        exec(`cd ${projectDir} && pnpm i`, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`Error: ${error.message}`);
+            return;
+          }
+          if (stderr) {
+            console.error(`Stderr: ${stderr}`);
+            return;
+          }
+          console.log("Dependencies installed successfully.");
+        });
+      }
     })
     .catch((err) => console.error(err));
 }
 
-function updateProjectFiles(projectDir, title, description) {
+function updateProjectFiles(projectDir, siteTitle, siteDescription) {
   const siteConfigFilePath = path.join(projectDir, "src", "config", "site.ts");
   const envFilePath = path.join(projectDir, ".env.local");
 
   if (fs.existsSync(siteConfigFilePath)) {
-    const newConfigContent = `
-export const SITE_TITLE = "${title}";
-export const SITE_DESCRIPTION = "${description}";
-`;
+    let configContent = fs.readFileSync(siteConfigFilePath, "utf-8");
 
-    fs.writeFileSync(siteConfigFilePath, newConfigContent);
+    configContent = configContent
+      .replace(/export const SITE_TITLE = "";/, `export const SITE_TITLE = "${siteTitle}";`)
+      .replace(/export const SITE_DESCRIPTION = "";/, `export const SITE_DESCRIPTION = "${siteDescription}";`);
+
+    fs.writeFileSync(siteConfigFilePath, configContent);
   }
 
   if (fs.existsSync(envFilePath)) {
