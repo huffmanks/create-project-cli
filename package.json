@@ -1,6 +1,6 @@
 {
   "name": "cpr-cli",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "",
   "main": "index.js",
   "type": "module",
@@ -18,6 +18,7 @@
     "@sindresorhus/slugify": "^2.2.1",
     "execa": "^9.1.0",
     "fs-extra": "^11.2.0",
-    "picocolors": "^1.0.1"
+    "picocolors": "^1.0.1",
+    "tar": "^7.2.0"
   }
 }

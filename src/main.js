@@ -1,17 +1,12 @@
-import { cwd } from "node:process";
 import fs from "fs-extra";
 import path from "path";
-import { fileURLToPath } from "url";
-
+import * as tar from "tar";
 import * as p from "@clack/prompts";
 import slugify from "@sindresorhus/slugify";
 import color from "picocolors";
 import { execa } from "execa";
 
 import { msg } from "./lib/messages.js";
-
-const filename = fileURLToPath(import.meta.url);
-const rootDir = path.dirname(filename);
 
 export async function main() {
   try {
@@ -38,7 +33,7 @@ export async function main() {
             validate(value) {
               if (value.length === 0) return `Project name is required!`;
 
-              const projectDir = path.join(cwd(), value);
+              const projectDir = path.join(process.cwd(), value);
 
               if (fs.existsSync(projectDir)) {
                 p.log.error(msg.projectDirExists({ projectDir }));
@@ -87,16 +82,11 @@ async function createProject({ group }) {
   const { template, projectName, siteTitle, siteDescription, installDeps } = group;
   const spinner = p.spinner();
 
+  const projectDir = path.join(process.cwd(), projectName);
+
   try {
-    const projectDir = path.join(cwd(), projectName);
-    const templateDir = path.join(rootDir, "templates", template);
-
-    const filterFunc = (src, dest) => {
-      const ignorePatterns = ["node_modules", "dist", ".astro", ".next", ".build"];
-      return !ignorePatterns.some((pattern) => src.includes(pattern));
-    };
-
-    await fs.copy(templateDir, projectDir, { filter: filterFunc });
+    const tarballUrl = "https://api.github.com/repos/huffmanks/create-project-cli/tarball/main";
+    await downloadAndExtractTarball({ tarballUrl, projectDir, template });
 
     updateProjectFiles({ projectDir, siteTitle, siteDescription });
 
@@ -118,6 +108,32 @@ async function createProject({ group }) {
   }
 }
 
+async function downloadAndExtractTarball({ tarballUrl, projectDir, template }) {
+  const tempDir = path.join(projectDir, "temp");
+  await fs.ensureDir(tempDir);
+
+  const tarballPath = path.join(tempDir, ".tar.gz");
+  await execa("curl", ["-L", tarballUrl, "-o", tarballPath]);
+
+  await tar.x({
+    file: tarballPath,
+    cwd: tempDir,
+    strip: 1,
+  });
+
+  const templateDir = path.join(tempDir, "src", "templates", template);
+
+  if (!(await fs.pathExists(templateDir))) {
+    throw new Error(`Template directory ${templateDir} does not exist`);
+  }
+
+  await fs.ensureDir(projectDir);
+  await fs.copy(templateDir, projectDir);
+
+  await fs.remove(tarballPath);
+  await fs.remove(tempDir);
+}
+
 async function updateProjectFiles({ projectDir, siteTitle, siteDescription }) {
   try {
     const siteConfigFilePath = path.join(projectDir, "src", "config", "site.ts");
@@ -133,14 +149,14 @@ async function updateProjectFiles({ projectDir, siteTitle, siteDescription }) {
       fs.writeFileSync(siteConfigFilePath, configContent);
     }
 
-    if (fs.existsSync(envFilePath)) {
-      const { stdout } = await execa`openssl rand -base64 33`;
+    await fs.ensureFile(envFilePath);
 
-      const secret = stdout.trim();
-      const envContent = `AUTH_SECRET=${secret}`;
+    const { stdout } = await execa`openssl rand -base64 33`;
 
-      fs.writeFileSync(envFilePath, envContent);
-    }
+    const secret = stdout.trim();
+    const envContent = `AUTH_SECRET=${secret}`;
+
+    fs.writeFileSync(envFilePath, envContent);
   } catch (err) {
     p.log.error(`${err}\n`);
     process.exit(0);
