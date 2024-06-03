@@ -1,18 +1,23 @@
 {
   "name": "cpr-cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "node index.js"
+    "dev": "node src/index.js"
+  },
+  "bin": {
+    "cpr-cli": "bin/cli.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "enquirer": "^2.4.1",
+    "@clack/prompts": "^0.7.0",
+    "@sindresorhus/slugify": "^2.2.1",
+    "execa": "^9.1.0",
     "fs-extra": "^11.2.0",
-    "yosay": "^3.0.0"
+    "picocolors": "^1.0.1"
   }
 }
